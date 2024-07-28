@@ -89,8 +89,29 @@ def callback(req: Request):
     if "access_token" in response_json:
         access_token = response_json["access_token"]
         redirect_url = "https://playscene-app.vercel.app/?access_token=" + access_token
+        #redirect_url = "http://localhost:3000/?access_token=" + access_token
         print(f'callback access token: {access_token}')
         return RedirectResponse(redirect_url)
+    
+@app.post("/upload")
+async def upload(request: Request):
+    req = await request.json()
+    print(f'req: {req}')
+    imagePath = req["path"]
+    res = supabase.storage.from_('playscene').get_public_url(f'uploads/{imagePath}')
+    print(f'res: {res}')
+
+    # call Replicate 
+    print('Running the replicate model...')
+    output = await get_image(res)
+
+    # call Open AI for sample tracks
+    print('Running the gpt model...')
+    sample_tracks = get_sample_tracks(output)
+
+    # call Spotify API for recs
+    print('Running the spotify recs...')
+    return (generate_playlist(sample_tracks))
 
 async def get_image(path: str):
     input = {
