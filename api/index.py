@@ -1,9 +1,9 @@
 import replicate, spotipy, instructor
 import base64, os, requests, urllib, time
 
-from fastapi import FastAPI, Request
+from fastapi import FastAPI, Request, Form
 from fastapi.responses import RedirectResponse
-from fastapi.middleware.cors import CORSMiddleware
+from starlette.middleware.cors import CORSMiddleware
 from dotenv import load_dotenv
 from spotipy.oauth2 import SpotifyOAuth
 from openai import OpenAI
@@ -29,30 +29,18 @@ sample_tracks: Tracks = []
 # open ai client
 client = instructor.from_openai(OpenAI())
 
-# spotify auth manager
-auth_manager = SpotifyOAuth(
-    client_id=os.getenv("CLIENT_ID"),
-    client_secret=os.getenv("CLIENT_SECRET"),
-    redirect_uri="https://fastapi-vercel-silk-gamma.vercel.app/callback",
-    #redirect_uri="http://127.0.0.1:8000/callback", # local
-    scope="streaming playlist-modify-public user-top-read user-library-modify user-read-email user-read-private",
-    show_dialog=True)
-
-sp = spotipy.Spotify(auth_manager=auth_manager)
-access_token = ''
-
+load_dotenv()
 app = FastAPI(docs_url="/api/docs", openapi_url="/api/openapi.json")
+app = FastAPI()
 
+# cors config must be after instantiation of FastAPI instance
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=["http://localhost:3000", "https://playscene-app.vercel.app"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"]
 )
-
-load_dotenv()
-app = FastAPI()
 
 @app.get("/", tags=["Root"])
 async def read_root() -> dict:
@@ -62,7 +50,17 @@ async def read_root() -> dict:
 
 @app.get("/login")
 def login():
-    return RedirectResponse(auth_manager.get_authorize_url())
+    auth_options = {
+        "response_type": "code",
+        "client_id": os.getenv("CLIENT_ID"),
+        "redirect_uri":"https://fastapi-vercel-silk-gamma.vercel.app/callback",
+        #"redirect_uri": "http://127.0.0.1:8000/callback", # local
+        "scope": "streaming playlist-modify-public user-top-read user-library-modify user-read-email user-read-private",
+        "show_dialog": "true"
+    }
+    
+    auth_url = "https://accounts.spotify.com/authorize/?" + urllib.parse.urlencode(auth_options)
+    return RedirectResponse(auth_url)
 
 @app.get("/callback")
 def callback(req: Request):
@@ -94,10 +92,7 @@ def callback(req: Request):
         return RedirectResponse(redirect_url)
     
 @app.post("/upload")
-async def upload(request: Request):
-    req = await request.json()
-    print(f'req: {req}')
-    imagePath = req["path"]
+async def upload(imagePath: str = Form(...), accessToken: str = Form(...)):
     res = supabase.storage.from_('playscene').get_public_url(f'uploads/{imagePath}')
     print(f'res: {res}')
 
@@ -111,7 +106,7 @@ async def upload(request: Request):
 
     # call Spotify API for recs
     print('Running the spotify recs...')
-    return (generate_playlist(sample_tracks))
+    return (generate_playlist(sample_tracks, accessToken))
 
 async def get_image(path: str):
     input = {
@@ -146,7 +141,10 @@ def get_sample_tracks(img_desc):
 
     return sample_tracks
 
-def generate_playlist(sample_tracks):
+def generate_playlist(sample_tracks, accessToken):
+    # auth spotify
+    sp = spotipy.Spotify(auth= accessToken)
+
     # get spotify ids of each track using search endpoint
     for track in sample_tracks:
         query_str = urllib.parse.quote(f'track:{track.track} artist:{track.artist}', safe='')
@@ -155,6 +153,7 @@ def generate_playlist(sample_tracks):
             continue
         else:
             track.track_id = response['tracks']['items'][0]['id']
+            #print(f'track_id: {track.track_id}')
         
     # call spotify api recommendations endpoint - takes up to 5 seeds
     track_ids = [track.track_id for track in sample_tracks][:5]
