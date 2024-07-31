@@ -86,7 +86,7 @@ def callback(req: Request):
 
     if "access_token" in response_json:
         access_token = response_json["access_token"]
-        redirect_url = "https://playscene.app/?access_token=" + access_token
+        redirect_url = "https://playscene-app-jteesangs-projects.vercel.app/?access_token=" + access_token
         #redirect_url = "http://localhost:3000/?access_token=" + access_token
         print(f'callback access token: {access_token}')
         return RedirectResponse(redirect_url)
