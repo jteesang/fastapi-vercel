@@ -1,5 +1,5 @@
 import replicate, spotipy, instructor
-import base64, os, requests, urllib, time
+import base64, os, requests, urllib, time, datetime
 
 from fastapi import FastAPI, Request, Form
 from fastapi.responses import RedirectResponse
@@ -53,8 +53,8 @@ def login():
     auth_options = {
         "response_type": "code",
         "client_id": os.getenv("CLIENT_ID"),
-        "redirect_uri":"https://fastapi-vercel-silk-gamma.vercel.app/callback",
-        #"redirect_uri": "http://127.0.0.1:8000/callback", # local
+        #"redirect_uri":"https://fastapi-vercel-silk-gamma.vercel.app/callback",
+        "redirect_uri": "http://127.0.0.1:8000/callback", # local
         "scope": "streaming playlist-modify-public user-top-read user-library-modify user-read-email user-read-private",
         "show_dialog": "true"
     }
@@ -72,8 +72,8 @@ def callback(req: Request):
 
     form = {
         "code": req.query_params.get('code'),
-        "redirect_uri":"https://fastapi-vercel-silk-gamma.vercel.app/callback",
-        #"redirect_uri": "http://127.0.0.1:8000/callback", # local
+        #"redirect_uri":"https://fastapi-vercel-silk-gamma.vercel.app/callback",
+        "redirect_uri": "http://127.0.0.1:8000/callback", # local
         "grant_type": "authorization_code" 
     }
     headers = {
@@ -86,8 +86,8 @@ def callback(req: Request):
 
     if "access_token" in response_json:
         access_token = response_json["access_token"]
-        redirect_url = "https://playscene.app/?access_token=" + access_token
-        #redirect_url = "http://localhost:3000/?access_token=" + access_token
+        #redirect_url = "https://playscene.app/?access_token=" + access_token
+        redirect_url = "http://localhost:3000/?access_token=" + access_token
         print(f'callback access token: {access_token}')
         return RedirectResponse(redirect_url)
     
@@ -96,13 +96,16 @@ async def upload(imagePath: str = Form(...), accessToken: str = Form(...)):
     res = supabase.storage.from_('playscene').get_public_url(f'uploads/{imagePath}')
     print(f'res: {res}')
 
-    # call Replicate 
-    print('Running the replicate model...')
-    output = await get_image(res)
+    # # call Replicate 
+    # print('Running the replicate model...')
+    # output = await get_image(res)
 
-    # call Open AI for sample tracks
-    print('Running the gpt model...')
-    sample_tracks = get_sample_tracks(output)
+    # # call Open AI for sample tracks
+    # print('Running the gpt model...')
+    # sample_tracks = get_sample_tracks(output)
+
+    print('Running the gpt 4o mini model...')
+    sample_tracks = get_sample_tracks_gpt4(res)
 
     # call Spotify API for recs
     print('Running the spotify recs...')
@@ -140,6 +143,39 @@ def get_sample_tracks(img_desc):
         sample_tracks.append(resp)
 
     return sample_tracks
+
+# use gpt-4o-mini for both vision and track generator
+def get_sample_tracks_gpt4(imagePath: str):
+    
+    # print(f'before API call: {datetime.datetime.now()}')
+    response = client.chat.completions.create_iterable(
+        model="gpt-4o-mini",
+        response_model=Track,
+        messages= [
+            {
+                "role": "user", 
+                "content": [
+                    {
+                        "type": "text",
+                        "text": "Describe the vibe of this image and return 5 tracks that would fit the mood. Return only the artist and title of the track."
+                    },
+                    {
+                        "type": "image_url",
+                        "image_url": {
+                            "url": imagePath
+                        }
+                    }
+                ]
+            }
+        ]
+    )
+    # print(f'after API call: {datetime.datetime.now()}')
+
+    for resp in response:
+        sample_tracks.append(resp)
+        print(resp)
+    return sample_tracks
+
 
 def generate_playlist(sample_tracks, accessToken):
     # auth spotify
