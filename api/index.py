@@ -53,8 +53,7 @@ def login():
     auth_options = {
         "response_type": "code",
         "client_id": os.getenv("CLIENT_ID"),
-        #"redirect_uri":"https://fastapi-vercel-silk-gamma.vercel.app/callback",
-        "redirect_uri": "http://127.0.0.1:8000/callback", # local
+        "redirect_uri": os.getenv("API_SERVICE") + "/callback",
         "scope": "streaming playlist-modify-public user-top-read user-library-modify user-read-email user-read-private",
         "show_dialog": "true"
     }
@@ -72,8 +71,7 @@ def callback(req: Request):
 
     form = {
         "code": req.query_params.get('code'),
-        #"redirect_uri":"https://fastapi-vercel-silk-gamma.vercel.app/callback",
-        "redirect_uri": "http://127.0.0.1:8000/callback", # local
+        "redirect_uri": os.getenv("API_SERVICE") + "/callback", 
         "grant_type": "authorization_code" 
     }
     headers = {
@@ -86,15 +84,12 @@ def callback(req: Request):
 
     if "access_token" in response_json:
         access_token = response_json["access_token"]
-        #redirect_url = "https://playscene.app/?access_token=" + access_token
-        redirect_url = "http://localhost:3000/?access_token=" + access_token
-        print(f'callback access token: {access_token}')
+        redirect_url = os.getenv("CLIENT_SERVICE") + "/?access_token=" + access_token
         return RedirectResponse(redirect_url)
     
 @app.post("/upload")
 async def upload(imagePath: str = Form(...), accessToken: str = Form(...)):
     res = supabase.storage.from_('playscene').get_public_url(f'uploads/{imagePath}')
-    print(f'res: {res}')
 
     # # call Replicate 
     # print('Running the replicate model...')
