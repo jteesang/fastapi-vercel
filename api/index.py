@@ -141,7 +141,7 @@ def get_sample_tracks(img_desc):
 
 # use gpt-4o-mini for both vision and track generator
 def get_sample_tracks_gpt4(imagePath: str):
-    
+    print(f'imagePath: ${imagePath}')
     # print(f'before API call: {datetime.datetime.now()}')
     response = client.chat.completions.create_iterable(
         model="gpt-4o-mini",
