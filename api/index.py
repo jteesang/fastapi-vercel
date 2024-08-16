@@ -104,7 +104,7 @@ async def upload(imagePath: str = Form(...), accessToken: str = Form(...)):
 
     # call Spotify API for recs
     print('Running the spotify recs...')
-    return (generate_playlist(sample_tracks, accessToken))
+    return (generate_playlist(sample_tracks, accessToken, res))
 
 async def get_image(path: str):
     input = {
@@ -123,7 +123,7 @@ async def get_image(path: str):
 
     return prediction.output
 
-def get_sample_tracks(img_desc):
+def get_sample_tracks(img_desc: str):
     # get 5 sample tracks from open ai
     response = client.chat.completions.create_iterable(
         model="gpt-3.5-turbo",
@@ -131,7 +131,7 @@ def get_sample_tracks(img_desc):
         messages=[
             {"role": "system", "content": "You are a helpful assistant and music junkie."},
             {"role": "assistant", "content": img_desc},
-            {"role": "user", "content": "Based on the description of an image provided, recommend only 5 different songs that fit the vibe. Only return the artist and track for each recommendation."}
+            {"role": "user", "content": "Based on the description of an image provided, recommend only 5 different songs that fit the vibe and text description. Only return the artist and track for each recommendation."}
     ])
     
     for resp in response:
@@ -141,8 +141,6 @@ def get_sample_tracks(img_desc):
 
 # use gpt-4o-mini for both vision and track generator
 def get_sample_tracks_gpt4(imagePath: str):
-    print(f'imagePath: ${imagePath}')
-    # print(f'before API call: {datetime.datetime.now()}')
     response = client.chat.completions.create_iterable(
         model="gpt-4o-mini",
         response_model=Track,
@@ -164,7 +162,6 @@ def get_sample_tracks_gpt4(imagePath: str):
             }
         ]
     )
-    # print(f'after API call: {datetime.datetime.now()}')
 
     for resp in response:
         sample_tracks.append(resp)
@@ -172,7 +169,7 @@ def get_sample_tracks_gpt4(imagePath: str):
     return sample_tracks
 
 
-def generate_playlist(sample_tracks, accessToken):
+def generate_playlist(sample_tracks: list, accessToken: str, imagePath: str):
     # auth spotify
     sp = spotipy.Spotify(auth= accessToken)
 
@@ -203,9 +200,9 @@ def generate_playlist(sample_tracks, accessToken):
     add_tracks = sp.playlist_add_items(playlist_id, rec_tracks)
 
     # get playlist image
-    cover_image = sp.playlist_cover_image(playlist_id)[1]['url']
+    #cover_image = sp.playlist_cover_image(playlist_id)[1]['url']
 
-    return {'playlist': playlist_id, 'cover_image': cover_image, 'user': user_id}
+    return {'playlist': playlist_id, 'cover_image': imagePath, 'user': 'playscene'}
 
 
 
