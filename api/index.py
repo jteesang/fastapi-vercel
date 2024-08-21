@@ -2,7 +2,7 @@ import replicate, spotipy, instructor
 import base64, os, requests, urllib, time, datetime
 
 from fastapi import FastAPI, Request, Form
-from fastapi.responses import RedirectResponse
+from fastapi.responses import RedirectResponse, StreamingResponse
 from starlette.middleware.cors import CORSMiddleware
 from dotenv import load_dotenv
 from spotipy.oauth2 import SpotifyOAuth
@@ -23,8 +23,9 @@ class Track(BaseModel):
     track_id: str
     artist_id: str
 
-Tracks = List[Track]
-sample_tracks: Tracks = []
+class Analysis(BaseModel):
+    description: str
+    sample_tracks: List[Track]
 
 # open ai client
 client = instructor.from_openai(OpenAI())
@@ -89,68 +90,31 @@ def callback(req: Request):
     
 @app.post("/upload")
 async def upload(imagePath: str = Form(...), accessToken: str = Form(...)):
+    global sample_tracks, res, token
+    token = accessToken
     res = supabase.storage.from_('playscene').get_public_url(f'uploads/{imagePath}')
+    response = await get_sample_tracks_gpt4(res)
+    sample_tracks = response.sample_tracks
+    return {'description': response.description}
 
-    # # call Replicate 
-    # print('Running the replicate model...')
-    # output = await get_image(res)
-
-    # # call Open AI for sample tracks
-    # print('Running the gpt model...')
-    # sample_tracks = get_sample_tracks(output)
-
-    print('Running the gpt 4o mini model...')
-    sample_tracks = get_sample_tracks_gpt4(res)
-
-    # call Spotify API for recs
-    print('Running the spotify recs...')
-    return (generate_playlist(sample_tracks, accessToken, res))
-
-async def get_image(path: str):
-    input = {
-        "image": path,
-        "clip_model_name": "ViT-L-14/openai"
-    }   
-    prediction = replicate.predictions.create(
-        version="8151e1c9f47e696fa316146a2e35812ccf79cfc9eba05b11c7f450155102af70",
-        input= input,
-    )
-    # poll for status
-    while prediction.status not in {"succeeded", "failed", "canceled"}:
-        prediction.reload()
-        time.sleep(2)
-        print(f"status : {prediction.status}")
-
-    return prediction.output
-
-def get_sample_tracks(img_desc: str):
-    # get 5 sample tracks from open ai
-    response = client.chat.completions.create_iterable(
-        model="gpt-3.5-turbo",
-        response_model=Track,
-        messages=[
-            {"role": "system", "content": "You are a helpful assistant and music junkie."},
-            {"role": "assistant", "content": img_desc},
-            {"role": "user", "content": "Based on the description of an image provided, recommend only 5 different songs that fit the vibe and text description. Only return the artist and track for each recommendation."}
-    ])
-    
-    for resp in response:
-        sample_tracks.append(resp)
-
-    return sample_tracks
+@app.get("/get_playlist")
+async def get_playlist():
+    print(f'\nGetting playlist endpoint...')
+    return generate_playlist(sample_tracks, token, res)
 
 # use gpt-4o-mini for both vision and track generator
-def get_sample_tracks_gpt4(imagePath: str):
-    response = client.chat.completions.create_iterable(
+async def get_sample_tracks_gpt4(imagePath: str):
+    print('Running the gpt 4o mini model...')
+    response = client.chat.completions.create(
         model="gpt-4o-mini",
-        response_model=Track,
+        response_model=Analysis,
         messages= [
             {
                 "role": "user", 
                 "content": [
                     {
                         "type": "text",
-                        "text": "Describe the vibe of this image and return 5 tracks that would fit the mood. Return only the artist and title of the track."
+                        "text": "Describe the vibe of this image with as comma separated short descriptors using Gen-Z slang. Return only the descriptors and generate 5 tracks that would fit the mood. Return first the vibe of the image as the description and the artist and title of each track."
                     },
                     {
                         "type": "image_url",
@@ -162,16 +126,14 @@ def get_sample_tracks_gpt4(imagePath: str):
             }
         ]
     )
+    print(response)
+    return response
 
-    for resp in response:
-        sample_tracks.append(resp)
-        print(resp)
-    return sample_tracks
-
-
-def generate_playlist(sample_tracks: list, accessToken: str, imagePath: str):
+# call Spotify API for recs
+def generate_playlist(sample_tracks: list, token: str, imagePath: str):
+    print('Running the spotify recs...')
     # auth spotify
-    sp = spotipy.Spotify(auth= accessToken)
+    sp = spotipy.Spotify(auth=token)
 
     # get spotify ids of each track using search endpoint
     for track in sample_tracks:
@@ -201,7 +163,7 @@ def generate_playlist(sample_tracks: list, accessToken: str, imagePath: str):
 
     # get playlist image
     #cover_image = sp.playlist_cover_image(playlist_id)[1]['url']
-
+    print(f'\nplaylist_id: {playlist_id}')
     return {'playlist': playlist_id, 'cover_image': imagePath, 'user': 'playscene'}
 
 
