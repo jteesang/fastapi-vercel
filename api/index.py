@@ -90,12 +90,13 @@ def callback(req: Request):
     
 @app.post("/upload")
 async def upload(imagePath: str = Form(...), accessToken: str = Form(...)):
-    global sample_tracks, res, token
+    global sample_tracks, res, token, description
     token = accessToken
     res = supabase.storage.from_('playscene').get_public_url(f'uploads/{imagePath}')
     response = await get_sample_tracks_gpt4(res)
     sample_tracks = response.sample_tracks
-    return {'description': response.description}
+    description = response.description
+    return {'description': description}
 
 @app.get("/get_playlist")
 async def get_playlist():
@@ -155,7 +156,7 @@ def generate_playlist(sample_tracks: list, token: str, imagePath: str):
     user_id = user_response['id']
 
     # create playlist
-    create_playlist = sp.user_playlist_create(user_id, f'{user_id}\'s playlist')
+    create_playlist = sp.user_playlist_create(user_id, 'playscene playlist', description=description)
     playlist_id = create_playlist['id']
 
     # add to playlist
